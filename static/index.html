@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Sky Voice Craft — AI Text-to-Speech</title>
+  
+  <!-- App Icon / Favicon -->
+  <link rel="icon" type="image/png" href="/static/assets/logo.png">
+  <link rel="apple-touch-icon" href="/static/assets/logo.png">
+  
+  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            cyberDark: '#070512',
+            cyberSurface: '#0f0c22',
+            cyberElevated: '#161233',
+            purpleNeon: '#a855f7',
+            purpleVibrant: '#8b5cf6',
+            cyanNeon: '#00f2fe',
+            cyanGlow: '#06b6d4',
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body id="app-body" class="desktop-view select-none">
+
+  <!-- Ambient Top Glow -->
+  <div class="ambient-glow"></div>
+
+  <!-- TOP APP BAR -->
+  <header class="sticky top-0 z-40 bg-[#070512]/92 backdrop-blur-xl border-b border-purple-500/20 px-4 py-3 sm:px-8">
+    <div class="max-w-7xl mx-auto flex items-center justify-between">
+      
+      <!-- Brand Logo & Name -->
+      <div class="flex items-center gap-3.5">
+        <div class="relative group">
+          <img 
+            src="/static/assets/logo.png" 
+            alt="Sky Voice Craft" 
+            class="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl object-cover border border-cyan-400/40 shadow-lg shadow-cyan-500/25 transition-transform duration-300 group-hover:scale-105"
+          >
+          <span class="absolute -bottom-1 -right-1 w-3 h-3 rounded-full bg-cyan-400 border-2 border-[#070512]"></span>
+        </div>
+        <div>
+          <div class="flex items-center gap-2.5">
+            <h1 class="text-base sm:text-xl font-extrabold tracking-tight gradient-text-purple-cyan">
+              Sky Voice Craft
+            </h1>
+            <span id="view-mode-tag" class="hidden sm:inline-block text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-semibold tracking-wider">
+              LAPTOP STUDIO
+            </span>
+          </div>
+          <p class="text-[10px] sm:text-[11px] text-slate-400 font-mono tracking-wider flex items-center gap-1.5">
+            <span>SKYREACHS MEDIA</span>
+            <span class="text-purple-400">•</span>
+            <span class="text-cyan-300">GEMINI 2.5 HD</span>
+          </p>
+        </div>
+      </div>
+
+      <!-- Right Controls: Live API Status Pill -->
+      <div class="flex items-center gap-2.5 sm:gap-4">
+        <!-- Live Key Status Pill -->
+        <div id="top-api-pill" onclick="switchTab('vault')" class="cursor-pointer flex items-center gap-2 px-3.5 py-2 rounded-full bg-[#130f2e] border border-cyan-500/40 hover:border-cyan-400 transition shadow-lg shadow-cyan-500/15">
+          <span id="top-api-dot" class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+          <span id="top-api-text" class="text-xs font-mono font-medium text-cyan-300">Checking...</span>
+        </div>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- APP LAYOUT WRAPPER (Desktop 2-Col or Mobile Frame) -->
+  <div id="main-layout" class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-8 flex flex-col md:flex-row gap-8">
+
+    <!-- DESKTOP SIDEBAR -->
+    <aside id="desktop-sidebar" class="hidden md:flex flex-col w-72 space-y-6 shrink-0">
+      
+      <!-- Brand Card in Sidebar -->
+      <div class="cyber-card p-4 flex items-center gap-3.5">
+        <img src="/static/assets/logo.png" alt="Skyreachs" class="w-12 h-12 rounded-2xl object-cover border border-purple-500/40 shadow-md">
+        <div>
+          <h3 class="text-sm font-bold text-slate-100">Sky Voice Craft</h3>
+          <p class="text-[11px] text-purple-300 font-mono">By Skyreachs Media</p>
+        </div>
+      </div>
+
+      <!-- Navigation Menu -->
+      <div class="cyber-card p-3.5 space-y-1.5">
+        <p class="text-[10px] font-mono font-bold tracking-wider text-purple-300/60 px-3 py-1.5">STUDIO WORKSPACE</p>
+        
+        <button onclick="switchTab('studio')" id="side-studio" class="w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-xs font-bold transition text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 shadow-lg shadow-cyan-500/10">
+          <span class="text-base">🎙️</span> Voice Studio
+        </button>
+
+        <button onclick="switchTab('vault')" id="side-vault" class="w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-medium text-slate-300 hover:text-white hover:bg-[#1a1440] transition">
+          <span class="flex items-center gap-3.5">
+            <span class="text-base">🔑</span> API Key Vault
+          </span>
+          <span id="side-vault-badge" class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">Active</span>
+        </button>
+
+        <button onclick="switchTab('history')" id="side-history" class="w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-xs font-medium text-slate-300 hover:text-white hover:bg-[#1a1440] transition">
+          <span class="text-base">📁</span> Audio Library
+        </button>
+      </div>
+
+      <!-- Quick Phone Connect Widget -->
+      <div class="cyber-card p-4 space-y-2.5 border-cyan-500/20">
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] font-mono font-bold text-cyan-300 flex items-center gap-1.5">
+            <span>📱</span> PHONE ACCESS
+          </span>
+          <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+        </div>
+        <p class="text-[11px] text-slate-300 leading-relaxed">Same Wi-Fi network par apne phone me open karein:</p>
+        <div class="bg-[#070512] border border-cyan-500/40 rounded-xl p-2.5 font-mono text-[11px] text-cyan-300 font-bold break-all shadow-inner" id="side-network-ip">
+          http://localhost:8000
+        </div>
+        <p class="text-[10px] text-slate-400">Add to Home Screen karke mobile app ki tarah chalao.</p>
+      </div>
+
+      <!-- Key Health Telemetry -->
+      <div class="cyber-card p-4 space-y-3">
+        <span class="text-[10px] font-mono font-bold text-purple-300/70">API TELEMETRY</span>
+        <div class="flex items-center justify-between text-xs font-mono">
+          <span class="text-slate-400">Active Keys:</span>
+          <span id="side-stat-active" class="font-bold text-cyan-400">1 🟢</span>
+        </div>
+        <div class="flex items-center justify-between text-xs font-mono">
+          <span class="text-slate-400">Auto-Rotation:</span>
+          <span class="font-bold text-purple-300">Enabled ⚡</span>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- MAIN CONTENT AREA -->
+    <main id="content-container" class="flex-1 w-full max-w-4xl mx-auto space-y-7">
+
+      <!-- ══════════════════════════════════════════════════════════════════════ -->
+      <!-- TAB 1: STUDIO (VOICE GENERATION) -->
+      <!-- ══════════════════════════════════════════════════════════════════════ -->
+      <div id="tab-studio" class="tab-content active space-y-7">
+
+        <!-- 1. Script & Narration Terminal Card -->
+        <div class="cyber-card p-5 sm:p-7 relative space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <span class="text-cyan-400 text-base">📝</span>
+              <label class="text-xs font-bold font-mono tracking-wider gradient-text-purple-cyan">
+                NARRATION SCRIPT
+              </label>
+            </div>
+            
+            <!-- Quick Tools -->
+            <div class="flex items-center gap-2">
+              <button onclick="pasteScript()" class="btn-cyber-ghost text-xs px-3 py-1.5 flex items-center gap-1.5">
+                <span>📋</span> Paste
+              </button>
+              <button onclick="loadSampleText()" class="btn-cyber-ghost text-xs px-3 py-1.5 flex items-center gap-1.5 text-cyan-300">
+                <span>✨</span> Sample
+              </button>
+              <button onclick="document.getElementById('script-file-input').click()" class="btn-cyber-ghost text-xs px-3 py-1.5 flex items-center gap-1.5">
+                <span>📁</span> .txt
+              </button>
+              <input type="file" id="script-file-input" accept=".txt" class="hidden" onchange="loadScriptFile(event)">
+              <button onclick="clearScript()" class="btn-cyber-ghost text-xs px-2.5 py-1.5 text-pink-400 hover:text-pink-300">
+                🗑️
+              </button>
+            </div>
+          </div>
+
+          <!-- Script Textarea -->
+          <textarea 
+            id="script-input" 
+            rows="5"
+            placeholder="Write or paste your YouTube script, story, or video narration here..."
+            class="cyber-textarea w-full text-slate-100 placeholder-slate-500 font-sans p-4"
+          >Namaste dosto! Aaj hum baat karenge AI ki duniya me hone wale sabse bade badlav ke baare me.</textarea>
+
+          <!-- Live Telemetry Bar -->
+          <div class="pt-1 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+            <div id="script-stats-badge" class="flex items-center gap-2 text-cyan-400 font-semibold bg-[#070512]/60 px-3 py-1.5 rounded-xl border border-purple-500/20">
+              <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+              <span id="char-count">88</span>/<span id="max-chars">1200</span> chars
+              <span class="text-slate-500">•</span>
+              <span id="word-count">16</span> words
+              <span class="text-slate-500">•</span>
+              <span id="est-duration">~6s audio</span>
+            </div>
+            <span class="text-[11px] text-purple-300/70">✨ Auto-Chunking & 120ms Breathing Pauses</span>
+          </div>
+        </div>
+
+        <!-- 2. ElevenLabs Style Interactive Voice Cards -->
+        <div class="cyber-card p-5 sm:p-7 space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <span class="text-purple-400 text-base">🎙️</span>
+              <h2 class="text-xs font-bold font-mono tracking-wider gradient-text-purple-cyan">
+                VOICE PERSONA SELECTOR
+              </h2>
+            </div>
+            <span class="text-xs font-mono text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 px-2.5 py-0.5 rounded-full">25+ Studio Voices</span>
+          </div>
+
+          <!-- Filter Pills -->
+          <div class="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+            <button onclick="filterVoices('all')" class="pill-filter active" id="filter-all">All Voices</button>
+            <button onclick="filterVoices('male')" class="pill-filter" id="filter-male">🎙️ Male</button>
+            <button onclick="filterVoices('female')" class="pill-filter" id="filter-female">🌸 Female</button>
+            <button onclick="filterVoices('cinematic')" class="pill-filter" id="filter-cinematic">🎬 Cinematic</button>
+            <button onclick="filterVoices('viral')" class="pill-filter" id="filter-viral">🔥 Viral Hooks</button>
+          </div>
+
+          <!-- Voice Cards Grid -->
+          <div id="voices-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 max-h-64 overflow-y-auto pr-1">
+            <!-- Dynamically populated by app.js -->
+          </div>
+        </div>
+
+        <!-- 3. Tone & Language Controls -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          
+          <!-- Vocal Tone / Emotion -->
+          <div class="cyber-card p-4 sm:p-5 space-y-2">
+            <label class="text-xs font-mono font-bold text-purple-300 flex items-center gap-2">
+              <span>🎭</span> VOCAL TONE & EMOTION
+            </label>
+            <select id="select-tone" class="cyber-select w-full p-3">
+              <option>Loading tones...</option>
+            </select>
+          </div>
+
+          <!-- Language / Accent -->
+          <div class="cyber-card p-4 sm:p-5 space-y-2">
+            <label class="text-xs font-mono font-bold text-cyan-300 flex items-center gap-2">
+              <span>🌐</span> LANGUAGE & ACCENT
+            </label>
+            <select id="select-lang" class="cyber-select w-full p-3">
+              <option>Loading languages...</option>
+            </select>
+          </div>
+
+        </div>
+
+        <!-- 4. Hero Action Button -->
+        <div class="pt-2">
+          <button 
+            id="btn-generate-voice" 
+            onclick="generateAudio()" 
+            class="btn-cyber-primary w-full py-4 sm:py-5 px-6 text-sm sm:text-base flex items-center justify-center gap-3 tracking-wider font-extrabold"
+          >
+            <span class="text-xl">⚡</span>
+            <span id="btn-generate-text">GENERATE HD AI VOICE</span>
+          </button>
+        </div>
+
+        <!-- 5. Cyber Waveform Audio Player Deck -->
+        <div id="player-card" class="waveform-deck p-5 sm:p-7 space-y-4 hidden transition-all duration-300">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <span class="w-3 h-3 rounded-full bg-cyan-400 animate-ping"></span>
+              <span id="player-voice-title" class="text-xs font-mono text-cyan-300 font-bold">Audio Ready (100%)</span>
+            </div>
+            <span id="player-time-label" class="text-xs font-mono text-slate-300">00:00 / 00:00</span>
+          </div>
+
+          <!-- Animated Reactive Waveform Canvas Visualizer -->
+          <div class="w-full h-18 bg-[#070512]/90 rounded-2xl p-2.5 flex items-center justify-center relative overflow-hidden border border-cyan-500/30 shadow-inner">
+            <canvas id="waveform-canvas" class="w-full h-full"></canvas>
+          </div>
+
+          <!-- Audio tag -->
+          <audio id="main-audio-player" class="hidden"></audio>
+
+          <!-- Controls & Download Bar -->
+          <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
+            <div class="flex items-center gap-3">
+              <button id="btn-toggle-play" onclick="togglePlayPause()" class="w-12 h-12 rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-500 text-white flex items-center justify-center text-xl font-bold shadow-lg shadow-cyan-500/30 hover:scale-105 transition">
+                ▶
+              </button>
+              <button onclick="replayAudio()" title="Replay" class="w-10 h-10 rounded-xl btn-cyber-ghost flex items-center justify-center text-sm">
+                🔄
+              </button>
+              
+              <!-- Speed Switcher -->
+              <div class="flex items-center bg-[#070512] border border-purple-500/30 rounded-xl p-0.5 text-[11px] font-mono">
+                <button onclick="setAudioSpeed(1.0)" id="speed-10" class="px-2.5 py-1 rounded-lg transition text-cyan-300 font-bold bg-cyan-500/20">1x</button>
+                <button onclick="setAudioSpeed(1.25)" id="speed-125" class="px-2.5 py-1 rounded-lg transition text-slate-400 hover:text-white">1.25x</button>
+                <button onclick="setAudioSpeed(1.5)" id="speed-15" class="px-2.5 py-1 rounded-lg transition text-slate-400 hover:text-white">1.5x</button>
+              </div>
+            </div>
+
+            <!-- Direct Download MP3 Button -->
+            <a id="btn-download-audio" href="#" download class="px-5 py-3 rounded-xl bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-400 text-cyan-300 font-mono text-xs font-bold flex items-center gap-2 hover:bg-cyan-500 hover:text-black transition shadow-lg shadow-cyan-500/20">
+              <span>⬇</span> Download HD MP3
+            </a>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════════════════════ -->
+      <!-- TAB 2: API VAULT & MULTI-KEY PROFILES -->
+      <!-- ══════════════════════════════════════════════════════════════════════ -->
+      <div id="tab-vault" class="tab-content hidden space-y-7">
+        
+        <!-- Live Overview Stats Banner (3 Metric Tiles) -->
+        <div class="cyber-card p-5 sm:p-7 space-y-4">
+          <div class="grid grid-cols-3 gap-3 sm:gap-5 text-center">
+            <div class="bg-[#070512]/70 border border-purple-500/20 rounded-2xl p-3.5">
+              <p class="text-[10px] sm:text-xs font-mono text-purple-300/70 mb-1">TOTAL KEYS</p>
+              <p id="stat-total-keys" class="text-xl sm:text-2xl font-bold font-mono text-purple-300">0</p>
+            </div>
+            <div class="bg-[#070512]/70 border border-cyan-500/30 rounded-2xl p-3.5 shadow-lg shadow-cyan-500/10">
+              <p class="text-[10px] sm:text-xs font-mono text-cyan-400 mb-1">ACTIVE & READY</p>
+              <p id="stat-active-keys" class="text-xl sm:text-2xl font-bold font-mono text-cyan-300">0 🟢</p>
+            </div>
+            <div class="bg-[#070512]/70 border border-pink-500/30 rounded-2xl p-3.5">
+              <p class="text-[10px] sm:text-xs font-mono text-pink-400 mb-1">RATE LIMITED</p>
+              <p id="stat-cooling-keys" class="text-xl sm:text-2xl font-bold font-mono text-pink-400">0 🔴</p>
+            </div>
+          </div>
+
+          <!-- Auto-Switch on Rate Limit Toggle -->
+          <div class="mt-4 pt-4 border-t border-purple-500/20 flex items-center justify-between">
+            <div>
+              <p class="text-xs sm:text-sm font-bold text-slate-200">Zero-Downtime Auto-Rotation (HTTP 429)</p>
+              <p class="text-[11px] text-slate-400">Quota hit hote hi automatically agle second doosri active key par switch ho jata hai</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="toggle-auto-switch" checked onchange="toggleAutoSwitch(this.checked)" class="sr-only peer">
+              <div class="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-purple-600 peer-checked:to-cyan-400"></div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Add New API Key Profile Card -->
+        <div class="cyber-card p-5 sm:p-7 space-y-4">
+          <div class="flex items-center justify-between">
+            <h2 class="text-xs font-bold font-mono tracking-wider gradient-text-purple-cyan flex items-center gap-2">
+              <span>➕</span> ADD API PROFILE
+            </h2>
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-[11px] font-mono text-cyan-300 hover:underline flex items-center gap-1">
+              Get Free Key ↗
+            </a>
+          </div>
+
+          <div class="space-y-3">
+            <div>
+              <label class="text-[11px] text-slate-400 font-mono">Profile Name / Account:</label>
+              <input 
+                type="text" 
+                id="new-profile-name" 
+                placeholder="e.g. Primary Studio Key, Work Account, Client Backup"
+                class="cyber-textarea w-full p-3 text-xs sm:text-sm"
+              >
+            </div>
+
+            <div>
+              <label class="text-[11px] text-slate-400 font-mono">Google AI Studio API Key:</label>
+              <div class="relative flex items-center">
+                <input 
+                  type="password" 
+                  id="new-profile-key" 
+                  placeholder="AIzaSy..."
+                  class="cyber-textarea w-full p-3 pr-10 text-xs sm:text-sm font-mono"
+                >
+                <button onclick="toggleKeyVisibility('new-profile-key')" class="absolute right-3.5 text-slate-400 hover:text-cyan-300 p-1">
+                  👁️
+                </button>
+              </div>
+            </div>
+
+            <button 
+              id="btn-save-key" 
+              onclick="addApiProfile()" 
+              class="btn-cyber-primary w-full py-3.5 px-4 text-xs sm:text-sm tracking-wide flex items-center justify-center gap-2"
+            >
+              <span>💾</span> Save & Verify API Profile
+            </button>
+          </div>
+        </div>
+
+        <!-- Saved Profiles List -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between px-1">
+            <span class="text-xs font-mono font-bold text-purple-300">CONFIGURED PROFILES (<span id="profile-count">0</span>)</span>
+            <button onclick="testAllProfiles()" class="text-xs font-mono text-cyan-300 hover:underline flex items-center gap-1">
+              <span>⚡</span> Test All Keys
+            </button>
+          </div>
+
+          <div id="profiles-list-container" class="space-y-3">
+            <!-- Injected by app.js -->
+          </div>
+        </div>
+
+        <p class="text-[11px] text-slate-500 text-center font-mono pt-2">
+          💡 Free Google AI Studio keys har minute refresh hoti hain. 2-3 keys add karne se zero-interruption generation milti hai.
+        </p>
+
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════════════════════ -->
+      <!-- TAB 3: AUDIO HISTORY -->
+      <!-- ══════════════════════════════════════════════════════════════════════ -->
+      <div id="tab-history" class="tab-content hidden space-y-4">
+        <div class="flex items-center justify-between mb-1 px-1">
+          <span class="text-xs font-mono font-bold gradient-text-purple-cyan flex items-center gap-2">
+            <span>📁</span> AUDIO RECORDINGS LIBRARY
+          </span>
+          <button onclick="loadHistory()" class="text-xs font-mono text-cyan-400 hover:underline transition">
+            🔄 Refresh
+          </button>
+        </div>
+
+        <div id="history-list-container" class="space-y-3">
+          <!-- Injected by app.js -->
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+
+  <!-- FLOATING BOTTOM DOCK NAVIGATION (Mobile View) -->
+  <nav id="mobile-bottom-nav" class="fixed bottom-4 left-4 right-4 z-40 bg-[#0c0822]/92 backdrop-blur-2xl border border-purple-500/30 rounded-2xl px-3 py-2 shadow-2xl shadow-purple-950/70 max-w-md mx-auto">
+    <div class="grid grid-cols-3 gap-1 text-center">
+      
+      <!-- Studio Tab -->
+      <button onclick="switchTab('studio')" id="nav-studio" class="nav-tab active flex flex-col items-center justify-center py-2 rounded-xl transition text-cyan-300">
+        <span class="text-lg">🎙️</span>
+        <span class="text-[10px] font-bold tracking-tight">Studio</span>
+      </button>
+
+      <!-- API Vault Tab -->
+      <button onclick="switchTab('vault')" id="nav-vault" class="nav-tab flex flex-col items-center justify-center py-2 rounded-xl transition text-slate-400 hover:text-slate-200">
+        <span class="text-lg">🔑</span>
+        <span class="text-[10px] font-bold tracking-tight">API Vault</span>
+      </button>
+
+      <!-- History Tab -->
+      <button onclick="switchTab('history')" id="nav-history" class="nav-tab flex flex-col items-center justify-center py-2 rounded-xl transition text-slate-400 hover:text-slate-200">
+        <span class="text-lg">📁</span>
+        <span class="text-[10px] font-bold tracking-tight">History</span>
+      </button>
+
+    </div>
+  </nav>
+
+  <!-- TOAST NOTIFICATION CONTAINER -->
+  <div id="toast" class="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl text-xs font-mono font-medium shadow-2xl border transition-all duration-300 opacity-0 pointer-events-none translate-y-2"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
