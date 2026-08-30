@@ -11,6 +11,7 @@ if sys.platform == "win32":
         sys.stderr.reconfigure(encoding='utf-8', errors='replace')
     except Exception:
         pass
+import re
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -19,7 +20,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from core.key_vault import KeyVaultManager
-from core.voice_engine import VoiceEngine, GEMINI_VOICES, VOICE_TONES, LANGUAGES
+from core.voice_engine import (
+    VoiceEngine, GEMINI_VOICES, VOICE_TONES, LANGUAGES,
+    detect_characters_in_script, parse_dialogue_script
+)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -90,6 +94,15 @@ class GenerateRequest(BaseModel):
     voice_name: str
     tone: str
     language: str
+
+class DialogueDetectRequest(BaseModel):
+    script: str
+
+class DialogueGenerateRequest(BaseModel):
+    script: str
+    character_voices: dict[str, str] = {}
+    tone: str = "🎭 Dramatic & Cinematic Storyteller"
+    language: str = "Hindi (Natural Indian Accent)"
 
 # ── API Routes ───────────────────────────────────────────────────────────────
 
@@ -206,6 +219,56 @@ def generate_speech(req: GenerateRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/dialogue/detect")
+def detect_dialogue_speakers(req: DialogueDetectRequest):
+    """Detects distinct character names from a dialogue script."""
+    try:
+        characters = detect_characters_in_script(req.script)
+        dialogue_lines = parse_dialogue_script(req.script)
+        return {
+            "characters": characters,
+            "line_count": len(dialogue_lines)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/dialogue/generate")
+def generate_dialogue_audio(req: DialogueGenerateRequest):
+    """Synthesizes a multi-character dialogue script into a single HD MP3."""
+    try:
+        file_path, filename, duration_sec = voice_engine.synthesize_dialogue(
+            script_text=req.script,
+            character_voice_map=req.character_voices,
+            tone=req.tone,
+            language=req.language
+        )
+
+        file_size_kb = round(os.path.getsize(file_path) / 1024, 1)
+        history_item = {
+            "id": str(int(time.time())),
+            "filename": filename,
+            "audio_url": f"/api/audio/{filename}",
+            "text_snippet": req.script.strip()[:140] + ("..." if len(req.script.strip()) > 140 else ""),
+            "voice": f"🎭 Multi-Voice ({len(req.character_voices)} Characters)",
+            "tone": req.tone.split("(")[0].strip(),
+            "language": req.language.split("(")[0].strip(),
+            "duration_sec": duration_sec,
+            "size_kb": file_size_kb,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+        history = load_history()
+        history.insert(0, history_item)
+        save_history(history[:50])
+
+        return {
+            "success": True,
+            "item": history_item,
+            "metrics": key_vault.get_metrics()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/audio/{file_path:path}")
 def get_audio_file(file_path: str):
     abs_path = os.path.abspath(os.path.join(OUTPUTS_DIR, file_path))
@@ -218,7 +281,6 @@ def get_audio_file(file_path: str):
 @app.get("/api/history")
 def get_history():
     history = load_history()
-    # Filter out files that no longer exist on disk
     valid_history = []
     for h in history:
         f_name = h.get("filename")
@@ -228,14 +290,21 @@ def get_history():
 
 @app.delete("/api/history/{filename}")
 def delete_history_item(filename: str):
-    file_path = os.path.join(OUTPUTS_DIR, filename)
+    # Path traversal protection: strict parameter validation
+    if "/" in filename or "\\" in filename or ".." in filename or not re.match(r'^[a-zA-Z0-9_\-\.]+$', filename):
+        raise HTTPException(status_code=400, detail="Invalid filename parameter")
+
+    file_path = os.path.abspath(os.path.join(OUTPUTS_DIR, filename))
+    if not file_path.startswith(os.path.abspath(OUTPUTS_DIR)):
+        raise HTTPException(status_code=403, detail="Forbidden access")
+
     if os.path.exists(file_path):
         try:
             os.remove(file_path)
         except Exception:
             pass
 
-    history = [h for h in load_history() if h.get("filename") != filename]
+    history = [h for h in load_history() if h.get("filename") != safe_filename]
     save_history(history)
     return {"success": True}
 

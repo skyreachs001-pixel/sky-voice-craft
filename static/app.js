@@ -10,6 +10,10 @@ let allVoicesList = [];
 let selectedVoiceName = "🌌 Enceladus (Deep, Epic & Cinematic - Male)";
 let currentVoiceFilter = 'all';
 
+let currentStudioMode = 'solo'; // 'solo' or 'dialogue'
+let detectedCharacters = [];
+let characterVoiceMap = {};
+
 // ── Voice Catalog Metadata (ElevenLabs Style) ──────────────────────────────
 function parseVoiceMetadata(rawName) {
   const isFemale = rawName.includes('Female');
@@ -137,9 +141,139 @@ function switchTab(tabId) {
 }
 
 // ── Live Script Telemetry ───────────────────────────────────────────────────
+function setStudioMode(mode) {
+  currentStudioMode = mode;
+  const btnSolo = document.getElementById('mode-btn-solo');
+  const btnDialogue = document.getElementById('mode-btn-dialogue');
+  const secSoloVoices = document.getElementById('section-solo-voices');
+  const secDialogueChars = document.getElementById('section-dialogue-characters');
+  const btnGenText = document.getElementById('btn-generate-text');
+  const scriptLabel = document.getElementById('script-section-label');
+  const chunkBadge = document.getElementById('chunk-info-badge');
+
+  if (mode === 'dialogue') {
+    if (btnDialogue) btnDialogue.className = "flex-1 py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600/40 to-cyan-600/40 text-cyan-300 border border-cyan-500/40 shadow-lg shadow-cyan-500/10";
+    if (btnSolo) btnSolo.className = "flex-1 py-2.5 px-4 rounded-xl text-xs font-medium transition flex items-center justify-center gap-2 text-slate-400 hover:text-slate-200 border border-transparent";
+    
+    if (secSoloVoices) secSoloVoices.classList.add('hidden');
+    if (secDialogueChars) secDialogueChars.classList.remove('hidden');
+    if (btnGenText) btnGenText.innerText = "GENERATE MULTI-VOICE DIALOGUE";
+    if (scriptLabel) scriptLabel.innerText = "DIALOGUE / PODCAST SCRIPT";
+    if (chunkBadge) chunkBadge.innerText = "🎭 Multi-Character Voice Synthesis & Conversational Timing";
+
+    const curr = document.getElementById('script-input').value.trim();
+    if (!curr.includes('[') && !curr.includes(':')) {
+      loadDialogueSample();
+    } else {
+      refreshDetectedCharacters();
+    }
+  } else {
+    if (btnSolo) btnSolo.className = "flex-1 py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600/40 to-cyan-600/40 text-cyan-300 border border-cyan-500/40 shadow-lg shadow-cyan-500/10";
+    if (btnDialogue) btnDialogue.className = "flex-1 py-2.5 px-4 rounded-xl text-xs font-medium transition flex items-center justify-center gap-2 text-slate-400 hover:text-slate-200 border border-transparent";
+
+    if (secSoloVoices) secSoloVoices.classList.remove('hidden');
+    if (secDialogueChars) secDialogueChars.classList.add('hidden');
+    if (btnGenText) btnGenText.innerText = "GENERATE HD AI VOICE";
+    if (scriptLabel) scriptLabel.innerText = "NARRATION SCRIPT";
+    if (chunkBadge) chunkBadge.innerText = "✨ Smart Multi-Chunk Concatenation (15,000+ chars)";
+  }
+  updateScriptStats();
+}
+
+async function refreshDetectedCharacters() {
+  const text = document.getElementById('script-input').value.trim();
+  const grid = document.getElementById('character-voice-grid');
+  if (!grid) return;
+
+  try {
+    const res = await fetch('/api/dialogue/detect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: text })
+    });
+    const data = await res.json();
+    detectedCharacters = data.characters || [];
+
+    if (detectedCharacters.length === 0) {
+      grid.innerHTML = `
+        <div class="col-span-full p-4 rounded-xl bg-[#070512]/60 border border-purple-500/20 text-center text-xs text-slate-400 font-mono">
+          No character tags found. Use format: <span class="text-cyan-300 font-bold">[Character Name]: Dialogue line</span>
+        </div>
+      `;
+      return;
+    }
+
+    // Default voice pool for smart assignment
+    const defaultVoicePool = [
+      "🌌 Enceladus (Deep, Epic & Cinematic - Male)",
+      "🌸 Kore (Calm, Soft & Soothing - Female)",
+      "🔥 Puck (High-Energy, Viral Reels & Hook - Male)",
+      "🎵 Aoede (Warm, Melodious & Expressive - Female)",
+      "⚡ Fenrir (Bold, Authoritative & Dramatic - Male)",
+      "💼 Leda (Professional News Anchor - Female)"
+    ];
+
+    let html = '';
+    detectedCharacters.forEach((charName, idx) => {
+      const assignedVoice = characterVoiceMap[charName] || defaultVoicePool[idx % defaultVoicePool.length];
+      characterVoiceMap[charName] = assignedVoice;
+
+      let optionsHtml = '';
+      allVoicesList.forEach(v => {
+        const isSelected = v.raw === assignedVoice;
+        optionsHtml += `<option value="${escapeHtml(v.raw)}" ${isSelected ? 'selected' : ''}>${escapeHtml(v.title)} (${escapeHtml(v.gender)} • ${escapeHtml(v.tag)})</option>`;
+      });
+
+      html += `
+        <div class="p-3 rounded-xl bg-[#070512]/80 border border-purple-500/25 space-y-2">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-purple-600/40 to-cyan-500/40 border border-cyan-500/40 flex items-center justify-center text-xs font-bold text-cyan-300">
+                ${idx + 1}
+              </div>
+              <span class="text-xs font-bold text-slate-100 font-mono">${escapeHtml(charName)}</span>
+            </div>
+            <span class="text-[10px] font-mono text-purple-300/80">Voice Assigned</span>
+          </div>
+
+          <select onchange="updateCharacterVoice('${escapeHtml(charName)}', this.value)" class="cyber-select w-full text-xs p-2">
+            ${optionsHtml}
+          </select>
+        </div>
+      `;
+    });
+
+    grid.innerHTML = html;
+
+  } catch (err) {
+    console.error("Detect characters error:", err);
+  }
+}
+
+function updateCharacterVoice(charName, voiceName) {
+  characterVoiceMap[charName] = voiceName;
+  showToast(`Voice updated for ${charName} 🎙️`, "info");
+}
+
+function loadDialogueSample() {
+  const sample = `[Narrator]: Andheri raat mein Koh-e-Siyah ke darwaze par achanak dastak hui.
+[Rahul]: Darwaza mat kholna Priya! Bahar koi khatarnaak ho sakta hai.
+[Priya]: Lekin Rahul, ek baar dekhne toh do kaun hai... Shayad kisi ko madad chahiye ho!
+[Narrator]: Tabhi darwaza zoor se khula aur ek ajeeb sa saya samne aa gaya.`;
+  document.getElementById('script-input').value = sample;
+  updateScriptStats();
+  refreshDetectedCharacters();
+  showToast("Multi-Voice Drama script loaded! 🎭", "success");
+}
+
 function setupScriptInputListeners() {
   const input = document.getElementById('script-input');
-  input.addEventListener('input', updateScriptStats);
+  input.addEventListener('input', () => {
+    updateScriptStats();
+    if (currentStudioMode === 'dialogue') {
+      refreshDetectedCharacters();
+    }
+  });
   updateScriptStats();
 }
 
@@ -154,12 +288,19 @@ function updateScriptStats() {
 
   let estSeconds = wordCount === 0 ? 0 : Math.max(1, Math.round(wordCount / 2.5));
   let estText = estSeconds < 60 ? `~${estSeconds}s audio` : `~${Math.floor(estSeconds / 60)}m ${estSeconds % 60}s audio`;
+
+  // Estimate chunks if long-form
+  const chunksEst = Math.ceil(charCount / 1200);
+  if (chunksEst > 1) {
+    estText += ` (${chunksEst} chunks)`;
+  }
+
   document.getElementById('est-duration').innerText = estText;
 
   const badge = document.getElementById('script-stats-badge');
   if (charCount <= 1200) {
     badge.className = "flex items-center gap-1.5 text-cyan-400 font-semibold";
-  } else if (charCount <= 3600) {
+  } else if (charCount <= 5000) {
     badge.className = "flex items-center gap-1.5 text-purple-300 font-semibold";
   } else {
     badge.className = "flex items-center gap-1.5 text-pink-400 font-semibold";
@@ -179,15 +320,22 @@ function pasteScript() {
 }
 
 function loadSampleText() {
-  const sample = "Karakoram ke buland pahadon ke daman mein chhota sa qasba Shigar basa tha. Barf ki thandi hawayen khidkiyon se takra rahi theen. Zaid ek jawan archaeologist tha jise purani tareekh aur an-chhooay raazon ka junoon tha. Kaha jata tha ke Koh-e-Siyah mein ek qadeem tehzeeb ka tilismati khazana dafan tha.";
-  document.getElementById('script-input').value = sample;
-  updateScriptStats();
-  showToast("Epic adventure story script loaded! 📄", "success");
+  if (currentStudioMode === 'dialogue') {
+    loadDialogueSample();
+  } else {
+    const sample = "Karakoram ke buland pahadon ke daman mein chhota sa qasba Shigar basa tha. Barf ki thandi hawayen khidkiyon se takra rahi theen. Zaid ek jawan archaeologist tha jise purani tareekh aur an-chhooay raazon ka junoon tha. Kaha jata tha ke Koh-e-Siyah mein ek qadeem tehzeeb ka tilismati khazana dafan tha.";
+    document.getElementById('script-input').value = sample;
+    updateScriptStats();
+    showToast("Epic adventure story script loaded! 📄", "success");
+  }
 }
 
 function clearScript() {
   document.getElementById('script-input').value = '';
   updateScriptStats();
+  if (currentStudioMode === 'dialogue') {
+    refreshDetectedCharacters();
+  }
 }
 
 function loadScriptFile(event) {
@@ -197,6 +345,9 @@ function loadScriptFile(event) {
   reader.onload = function(e) {
     document.getElementById('script-input').value = e.target.result;
     updateScriptStats();
+    if (currentStudioMode === 'dialogue') {
+      refreshDetectedCharacters();
+    }
     showToast(`Loaded ${file.name}`, "success");
   };
   reader.readAsText(file);
@@ -338,7 +489,7 @@ async function playVoiceSample(overrideVoice = null) {
   }
 }
 
-// ── Full Voice Generation ───────────────────────────────────────────────────
+// ── Full Voice Generation (Supports Solo & Multi-Voice Dialogue) ────────────
 async function generateAudio() {
   const text = document.getElementById('script-input').value.trim();
   if (!text) {
@@ -352,27 +503,43 @@ async function generateAudio() {
   const btn = document.getElementById('btn-generate-voice');
   const btnText = document.getElementById('btn-generate-text');
 
+  const isDialogue = currentStudioMode === 'dialogue';
+
   btn.disabled = true;
   btn.classList.add('opacity-75', 'cursor-wait');
-  btnText.innerText = "SYNTHESIZING HD VOICE (0%)...";
+  btnText.innerText = isDialogue ? "SYNTHESIZING DIALOGUE CHARACTERS..." : "SYNTHESIZING HD VOICE...";
 
   try {
-    const res = await fetch('/api/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text: text,
-        voice_name: selectedVoiceName,
-        tone: tone,
-        language: language
-      })
-    });
+    let res;
+    if (isDialogue) {
+      res = await fetch('/api/dialogue/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          script: text,
+          character_voices: characterVoiceMap,
+          tone: tone,
+          language: language
+        })
+      });
+    } else {
+      res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: text,
+          voice_name: selectedVoiceName,
+          tone: tone,
+          language: language
+        })
+      });
+    }
 
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || "Voice synthesis failed");
 
     const item = data.item;
-    showToast("HD Voice synthesized successfully! ⚡", "success");
+    showToast(isDialogue ? "Multi-Voice Dialogue ready! 🎭" : "HD Voice synthesized successfully! ⚡", "success");
 
     // Display Player Card
     const playerCard = document.getElementById('player-card');
@@ -392,7 +559,7 @@ async function generateAudio() {
   } finally {
     btn.disabled = false;
     btn.classList.remove('opacity-75', 'cursor-wait');
-    btnText.innerText = "GENERATE HD AI VOICE";
+    btnText.innerText = isDialogue ? "GENERATE MULTI-VOICE DIALOGUE" : "GENERATE HD AI VOICE";
   }
 }
 

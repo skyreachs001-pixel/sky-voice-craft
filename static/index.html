@@ -156,12 +156,24 @@
       <!-- ══════════════════════════════════════════════════════════════════════ -->
       <div id="tab-studio" class="tab-content active space-y-7">
 
+        <!-- Studio Mode Switcher: Solo vs Multi-Voice -->
+        <div class="flex items-center justify-between bg-[#110d2c]/90 border border-purple-500/30 p-1.5 rounded-2xl shadow-lg shadow-purple-950/40">
+          <div class="flex items-center gap-1.5 w-full">
+            <button id="mode-btn-solo" onclick="setStudioMode('solo')" class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600/40 to-cyan-600/40 text-cyan-300 border border-cyan-500/40 shadow-lg shadow-cyan-500/10">
+              <span class="text-base">🎙️</span> Solo Narration Studio
+            </button>
+            <button id="mode-btn-dialogue" onclick="setStudioMode('dialogue')" class="flex-1 py-2.5 px-4 rounded-xl text-xs font-medium transition flex items-center justify-center gap-2 text-slate-400 hover:text-slate-200">
+              <span class="text-base">🎭</span> Multi-Voice Dialogue / Podcast
+            </button>
+          </div>
+        </div>
+
         <!-- 1. Script & Narration Terminal Card -->
         <div class="cyber-card p-5 sm:p-7 relative space-y-4">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2.5">
               <span class="text-cyan-400 text-base">📝</span>
-              <label class="text-xs font-bold font-mono tracking-wider gradient-text-purple-cyan">
+              <label id="script-section-label" class="text-xs font-bold font-mono tracking-wider gradient-text-purple-cyan">
                 NARRATION SCRIPT
               </label>
             </div>
@@ -187,7 +199,7 @@
           <!-- Script Textarea -->
           <textarea 
             id="script-input" 
-            rows="5"
+            rows="6"
             placeholder="Write or paste your YouTube script, story, or video narration here..."
             class="cyber-textarea w-full text-slate-100 placeholder-slate-500 font-sans p-4"
           >Namaste dosto! Aaj hum baat karenge AI ki duniya me hone wale sabse bade badlav ke baare me.</textarea>
@@ -196,18 +208,40 @@
           <div class="pt-1 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
             <div id="script-stats-badge" class="flex items-center gap-2 text-cyan-400 font-semibold bg-[#070512]/60 px-3 py-1.5 rounded-xl border border-purple-500/20">
               <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
-              <span id="char-count">88</span>/<span id="max-chars">1200</span> chars
+              <span id="char-count">88</span>/<span id="max-chars">15000</span> chars
               <span class="text-slate-500">•</span>
               <span id="word-count">16</span> words
               <span class="text-slate-500">•</span>
               <span id="est-duration">~6s audio</span>
             </div>
-            <span class="text-[11px] text-purple-300/70">✨ Auto-Chunking & 120ms Breathing Pauses</span>
+            <span id="chunk-info-badge" class="text-[11px] text-purple-300/80">✨ Smart Multi-Chunk Concatenation (15,000+ chars)</span>
           </div>
         </div>
 
-        <!-- 2. ElevenLabs Style Interactive Voice Cards -->
-        <div class="cyber-card p-5 sm:p-7 space-y-4">
+        <!-- Multi-Voice Character Voice Assignment Section (Visible only in Dialogue mode) -->
+        <div id="section-dialogue-characters" class="cyber-card p-5 sm:p-7 space-y-4 hidden">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <span class="text-pink-400 text-base">🎭</span>
+              <h2 class="text-xs font-bold font-mono tracking-wider gradient-text-purple-cyan">
+                CHARACTER VOICE MAPPINGS
+              </h2>
+            </div>
+            <button onclick="refreshDetectedCharacters()" class="text-xs font-mono text-cyan-300 hover:underline flex items-center gap-1">
+              <span>🔄</span> Refresh Characters
+            </button>
+          </div>
+          <p class="text-xs text-slate-400">
+            Script me se detect huye har character ke liye alag voice select karein:
+          </p>
+
+          <div id="character-voice-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
+            <!-- Dynamically populated by app.js -->
+          </div>
+        </div>
+
+        <!-- 2. ElevenLabs Style Interactive Voice Cards (Solo Mode) -->
+        <div id="section-solo-voices" class="cyber-card p-5 sm:p-7 space-y-4">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2.5">
               <span class="text-purple-400 text-base">🎙️</span>

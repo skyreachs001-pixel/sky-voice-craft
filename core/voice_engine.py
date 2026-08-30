@@ -71,9 +71,9 @@ LANGUAGES = [
 ]
 
 TTS_MODELS = [
+    "gemini-3.1-flash-tts-preview",
     "gemini-2.5-flash-preview-tts",
-    "gemini-2.5-pro-preview-tts",
-    "gemini-3.1-flash-tts-preview"
+    "gemini-2.5-pro-preview-tts"
 ]
 
 VALID_BASE_VOICES = {"Puck", "Charon", "Kore", "Fenrir", "Aoede"}
@@ -150,6 +150,63 @@ def split_text_into_chunks(text: str, max_chars: int = 1200) -> list[str]:
 
     return chunks
 
+def parse_dialogue_script(script_text: str) -> list[dict]:
+    """
+    Parses a multi-speaker script with character tags into structured lines.
+    Supports formats:
+    [Narrator]: Dialogue line
+    [Rahul]: Dialogue line
+    Narrator: Dialogue line
+    Rahul: Dialogue line
+    """
+    if not script_text:
+        return []
+
+    lines = script_text.strip().split("\n")
+    dialogue_items = []
+    current_speaker = "Narrator"
+    current_text = []
+
+    speaker_pattern = re.compile(r'^(?:\[([^\]]+)\]|([A-Za-z0-9_\s\u0900-\u097F\-]+))\s*[:：]?\s*(.*)$')
+
+    for line in lines:
+        line_str = line.strip()
+        if not line_str:
+            continue
+        match = speaker_pattern.match(line_str)
+        if match:
+            if current_text:
+                dialogue_items.append({
+                    "speaker": current_speaker,
+                    "text": " ".join(current_text).strip()
+                })
+                current_text = []
+            speaker_name = (match.group(1) or match.group(2)).strip()
+            current_speaker = speaker_name
+            content = match.group(3).strip()
+            if content:
+                current_text.append(content)
+        else:
+            current_text.append(line_str)
+
+    if current_text:
+        dialogue_items.append({
+            "speaker": current_speaker,
+            "text": " ".join(current_text).strip()
+        })
+
+    return dialogue_items
+
+def detect_characters_in_script(script_text: str) -> list[str]:
+    """Extracts unique character names present in the dialogue script."""
+    items = parse_dialogue_script(script_text)
+    speakers = []
+    for it in items:
+        sp = it["speaker"]
+        if sp not in speakers:
+            speakers.append(sp)
+    return speakers
+
 def find_ffmpeg_executable() -> str | None:
     """Locate FFmpeg in PATH, system dirs, or local project folder."""
     in_path = shutil.which("ffmpeg")
@@ -219,8 +276,8 @@ class VoiceEngine:
             }
         }
 
-        # Try up to 3 rounds across candidate keys
-        for round_idx in range(3):
+        # Try up to 4 rounds across candidate keys
+        for round_idx in range(4):
             candidates = self.key_vault.get_candidate_keys_for_generation()
             if not candidates:
                 raise ValueError("No active API Keys available! Please add at least one Google AI Studio API key in the API Vault tab.")
@@ -252,56 +309,39 @@ class VoiceEngine:
                                         return pcm_data
                     except urllib.error.HTTPError as http_err:
                         if http_err.code == 429:
-                            # Rate limit hit! Instant auto-rotate
-                            self.key_vault.mark_rate_limited(p_id, cooldown_seconds=45)
-                            # Break inner model loop to rotate to the next profile key immediately
-                            break
+                            # Try other models in TTS_MODELS which have separate quota pools
+                            continue
                         elif http_err.code in (400, 403):
                             # Invalid key
                             self.key_vault.update_profile(p_id, enabled=False)
                             break
                         else:
-                            # Temporary error
-                            break
+                            continue
                     except Exception:
-                        break
+                        continue
 
-            # If all keys were exhausted, wait 2 seconds before next round
-            time.sleep(2.0)
+                # If loop completed without return, all models on this key were exhausted
+                self.key_vault.mark_rate_limited(p_id, cooldown_seconds=18)
 
-        raise RuntimeError("All configured API Keys are currently rate-limited. Please wait 30 seconds or add another API key to the Vault.")
+            # If all keys are currently cooling down, dynamically wait for cooldown to expire
+            rem_wait = 12.0
+            try:
+                candidates_now = self.key_vault.get_candidate_keys_for_generation()
+                if candidates_now:
+                    active_now = [c for c in candidates_now if c.get("cooldown_remaining", 0) == 0 and c.get("status") == "ACTIVE"]
+                    if not active_now:
+                        coolings = [c.get("cooldown_remaining", 0) for c in candidates_now if c.get("cooldown_remaining", 0) > 0]
+                        if coolings:
+                            rem_wait = min(coolings)
+            except Exception:
+                pass
 
-    def synthesize(self, text: str, voice_name: str, tone: str, language: str, custom_filename: str = None) -> tuple[str, str, int]:
-        """
-        Synthesize complete narration into an HD MP3 (or WAV fallback).
-        Returns: (file_path, filename, duration_seconds)
-        """
-        clean_text = clean_text_for_tts(text)
-        if not clean_text:
-            raise ValueError("Input script text cannot be empty!")
+            time.sleep(min(rem_wait + 1.0, 20.0))
 
-        base_voice = clean_voice_id(voice_name)
-        chunks = split_text_into_chunks(clean_text, max_chars=1200)
+        raise RuntimeError("All configured API Keys are currently rate-limited. Please wait 20 seconds or add another API key to the Vault.")
 
-        # 120ms natural breathing silence gap at 24000Hz 16-bit mono
-        silence_bytes = b'\x00' * int(24000 * 2 * 0.12)
-        merged_pcm = bytearray()
-
-        for idx, chunk in enumerate(chunks):
-            pcm = self._fetch_chunk(chunk, base_voice, tone, language)
-            if merged_pcm:
-                merged_pcm.extend(silence_bytes)
-            merged_pcm.extend(pcm)
-            if idx < len(chunks) - 1:
-                time.sleep(0.6)
-
-        timestamp = int(time.time())
-        snippet = "".join(c for c in clean_text[:20] if c.isalnum() or c in " _-").strip().replace(" ", "_")
-        if not snippet:
-            snippet = "audio"
-        base_filename = custom_filename or f"voice_{timestamp}_{snippet}"
-        base_filename = os.path.splitext(base_filename)[0]
-
+    def _save_pcm_to_mp3(self, merged_pcm: bytearray, base_filename: str) -> tuple[str, str, int]:
+        """Saves PCM to WAV and converts to HD MP3 with FFmpeg (or WAV fallback)."""
         temp_wav = os.path.join(self.output_dir, f"{base_filename}_temp.wav")
         final_mp3 = os.path.join(self.output_dir, f"{base_filename}.mp3")
 
@@ -312,7 +352,6 @@ class VoiceEngine:
             wf.setframerate(24000)
             wf.writeframes(bytes(merged_pcm))
 
-        # Calculate duration in seconds
         total_samples = len(merged_pcm) // 2
         duration_sec = max(1, round(total_samples / 24000))
 
@@ -344,6 +383,86 @@ class VoiceEngine:
             return final_wav, f"{base_filename}.wav", duration_sec
 
         raise RuntimeError("Audio file could not be saved to disk.")
+
+    def synthesize(self, text: str, voice_name: str, tone: str, language: str, custom_filename: str = None, progress_callback = None) -> tuple[str, str, int]:
+        """
+        Synthesize narration into an HD MP3.
+        Supports multi-chunk processing for long-form scripts (15,000+ chars).
+        Returns: (file_path, filename, duration_seconds)
+        """
+        clean_text = clean_text_for_tts(text)
+        if not clean_text:
+            raise ValueError("Input script text cannot be empty!")
+
+        base_voice = clean_voice_id(voice_name)
+        chunks = split_text_into_chunks(clean_text, max_chars=1200)
+
+        # 120ms natural breathing silence gap at 24000Hz 16-bit mono
+        silence_bytes = b'\x00' * int(24000 * 2 * 0.12)
+        merged_pcm = bytearray()
+
+        for idx, chunk in enumerate(chunks):
+            if progress_callback:
+                progress_callback(idx + 1, len(chunks), f"Synthesizing chunk {idx + 1}/{len(chunks)}...")
+            pcm = self._fetch_chunk(chunk, base_voice, tone, language)
+            if merged_pcm:
+                merged_pcm.extend(silence_bytes)
+            merged_pcm.extend(pcm)
+            if idx < len(chunks) - 1:
+                time.sleep(0.5)
+
+        timestamp = int(time.time())
+        snippet = "".join(c for c in clean_text[:20] if c.isalnum() or c in " _-").strip().replace(" ", "_")
+        if not snippet:
+            snippet = "audio"
+        base_filename = custom_filename or f"voice_{timestamp}_{snippet}"
+        base_filename = os.path.splitext(base_filename)[0]
+
+        return self._save_pcm_to_mp3(merged_pcm, base_filename)
+
+    def synthesize_dialogue(self, script_text: str, character_voice_map: dict, tone: str, language: str, custom_filename: str = None, progress_callback = None) -> tuple[str, str, int]:
+        """
+        Synthesizes a multi-speaker / character conversation into a single continuous HD MP3.
+        character_voice_map maps character names (e.g. 'Narrator', 'Rahul') to Gemini voices.
+        """
+        dialogue_items = parse_dialogue_script(script_text)
+        if not dialogue_items:
+            raise ValueError("No valid dialogue lines detected in script! Format: [Character Name]: Dialogue line")
+
+        # 250ms natural conversational silence gap between speakers
+        conversational_silence = b'\x00' * int(24000 * 2 * 0.25)
+        merged_pcm = bytearray()
+
+        total_lines = len(dialogue_items)
+        for idx, item in enumerate(dialogue_items):
+            speaker = item["speaker"]
+            line_text = clean_text_for_tts(item["text"])
+            if not line_text:
+                continue
+
+            voice_for_speaker = character_voice_map.get(speaker) or character_voice_map.get(speaker.lower()) or "Charon"
+            base_voice = clean_voice_id(voice_for_speaker)
+
+            if progress_callback:
+                progress_callback(idx + 1, total_lines, f"Synthesizing {speaker} ({idx + 1}/{total_lines})...")
+
+            # Split line into chunks if a single character dialogue is exceptionally long
+            sub_chunks = split_text_into_chunks(line_text, max_chars=1200)
+            for sub_c in sub_chunks:
+                pcm = self._fetch_chunk(sub_c, base_voice, tone, language)
+                if merged_pcm:
+                    merged_pcm.extend(conversational_silence)
+                merged_pcm.extend(pcm)
+                time.sleep(1.2)
+
+        if not merged_pcm:
+            raise ValueError("No audio was generated from the dialogue script.")
+
+        timestamp = int(time.time())
+        base_filename = custom_filename or f"dialogue_{timestamp}_podcast"
+        base_filename = os.path.splitext(base_filename)[0]
+
+        return self._save_pcm_to_mp3(merged_pcm, base_filename)
 
     def get_sample(self, voice_name: str) -> str:
         """Returns path to cached 2-second voice sample, creating it if needed."""
