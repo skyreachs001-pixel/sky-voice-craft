@@ -180,6 +180,9 @@
             
             <!-- Quick Tools -->
             <div class="flex items-center gap-2">
+              <button id="btn-convert-story" onclick="convertStoryToScript()" class="btn-cyber-ghost text-xs px-3 py-1.5 flex items-center gap-1.5 text-cyan-300 border border-cyan-500/30 hidden hover:bg-cyan-500/10">
+                <span>🪄</span> Auto-Convert Story
+              </button>
               <button onclick="pasteScript()" class="btn-cyber-ghost text-xs px-3 py-1.5 flex items-center gap-1.5">
                 <span>📋</span> Paste
               </button>
@@ -220,19 +223,24 @@
 
         <!-- Multi-Voice Character Voice Assignment Section (Visible only in Dialogue mode) -->
         <div id="section-dialogue-characters" class="cyber-card p-5 sm:p-7 space-y-4 hidden">
-          <div class="flex items-center justify-between">
+          <div class="flex items-center justify-between flex-wrap gap-2">
             <div class="flex items-center gap-2.5">
               <span class="text-pink-400 text-base">🎭</span>
               <h2 class="text-xs font-bold font-mono tracking-wider gradient-text-purple-cyan">
-                CHARACTER VOICE MAPPINGS
+                CHARACTER VOICES (<span id="char-count-label">2</span>/5 MAX)
               </h2>
             </div>
-            <button onclick="refreshDetectedCharacters()" class="text-xs font-mono text-cyan-300 hover:underline flex items-center gap-1">
-              <span>🔄</span> Refresh Characters
-            </button>
+            <div class="flex items-center gap-2">
+              <button id="btn-add-character" onclick="addNewCharacter()" class="btn-cyber-ghost text-xs px-3 py-1 flex items-center gap-1.5 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/10">
+                <span>➕</span> Add Character
+              </button>
+              <button onclick="syncCharactersFromScript()" class="text-xs font-mono text-purple-300 hover:text-white px-2 py-1 flex items-center gap-1">
+                <span>🔄</span> Sync from Script
+              </button>
+            </div>
           </div>
           <p class="text-xs text-slate-400">
-            Script me se detect huye har character ke liye alag voice select karein:
+            Apne characters ke names type karein aur har character ko unki aawaz assign karein (2 se 5 characters):
           </p>
 
           <div id="character-voice-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">

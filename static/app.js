@@ -141,12 +141,26 @@ function switchTab(tabId) {
 }
 
 // ── Live Script Telemetry ───────────────────────────────────────────────────
+const DEFAULT_VOICE_POOL = [
+  "🌌 Enceladus (Deep, Epic & Cinematic - Male)",
+  "🌸 Kore (Calm, Soft & Soothing - Female)",
+  "🔥 Puck (High-Energy, Viral Reels & Hook - Male)",
+  "🎵 Aoede (Warm, Melodious & Expressive - Female)",
+  "⚡ Fenrir (Bold, Authoritative & Dramatic - Male)"
+];
+
+let characterEntries = [
+  { id: 'c1', name: "Narrator", voice: DEFAULT_VOICE_POOL[0] },
+  { id: 'c2', name: "Unknown", voice: DEFAULT_VOICE_POOL[1] }
+];
+
 function setStudioMode(mode) {
   currentStudioMode = mode;
   const btnSolo = document.getElementById('mode-btn-solo');
   const btnDialogue = document.getElementById('mode-btn-dialogue');
   const secSoloVoices = document.getElementById('section-solo-voices');
   const secDialogueChars = document.getElementById('section-dialogue-characters');
+  const btnConvertStory = document.getElementById('btn-convert-story');
   const btnGenText = document.getElementById('btn-generate-text');
   const scriptLabel = document.getElementById('script-section-label');
   const chunkBadge = document.getElementById('chunk-info-badge');
@@ -157,15 +171,16 @@ function setStudioMode(mode) {
     
     if (secSoloVoices) secSoloVoices.classList.add('hidden');
     if (secDialogueChars) secDialogueChars.classList.remove('hidden');
+    if (btnConvertStory) btnConvertStory.classList.remove('hidden');
     if (btnGenText) btnGenText.innerText = "GENERATE MULTI-VOICE DIALOGUE";
     if (scriptLabel) scriptLabel.innerText = "DIALOGUE / PODCAST SCRIPT";
-    if (chunkBadge) chunkBadge.innerText = "🎭 Multi-Character Voice Synthesis & Conversational Timing";
+    if (chunkBadge) chunkBadge.innerText = "🎭 Multi-Character Voice Synthesis (2-5 Characters)";
 
     const curr = document.getElementById('script-input').value.trim();
     if (!curr.includes('[') && !curr.includes(':')) {
       loadDialogueSample();
     } else {
-      refreshDetectedCharacters();
+      syncCharactersFromScript();
     }
   } else {
     if (btnSolo) btnSolo.className = "flex-1 py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600/40 to-cyan-600/40 text-cyan-300 border border-cyan-500/40 shadow-lg shadow-cyan-500/10";
@@ -173,6 +188,7 @@ function setStudioMode(mode) {
 
     if (secSoloVoices) secSoloVoices.classList.remove('hidden');
     if (secDialogueChars) secDialogueChars.classList.add('hidden');
+    if (btnConvertStory) btnConvertStory.classList.add('hidden');
     if (btnGenText) btnGenText.innerText = "GENERATE HD AI VOICE";
     if (scriptLabel) scriptLabel.innerText = "NARRATION SCRIPT";
     if (chunkBadge) chunkBadge.innerText = "✨ Smart Multi-Chunk Concatenation (15,000+ chars)";
@@ -180,10 +196,112 @@ function setStudioMode(mode) {
   updateScriptStats();
 }
 
-async function refreshDetectedCharacters() {
-  const text = document.getElementById('script-input').value.trim();
+function renderCharacterGrid() {
   const grid = document.getElementById('character-voice-grid');
+  const countLabel = document.getElementById('char-count-label');
+  const addBtn = document.getElementById('btn-add-character');
   if (!grid) return;
+
+  if (countLabel) countLabel.innerText = characterEntries.length;
+  if (addBtn) {
+    if (characterEntries.length >= 5) {
+      addBtn.classList.add('opacity-40', 'cursor-not-allowed');
+      addBtn.disabled = true;
+    } else {
+      addBtn.classList.remove('opacity-40', 'cursor-not-allowed');
+      addBtn.disabled = false;
+    }
+  }
+
+  let html = '';
+  characterEntries.forEach((char, idx) => {
+    let optionsHtml = '';
+    allVoicesList.forEach(v => {
+      const isSelected = v.raw === char.voice;
+      optionsHtml += `<option value="${escapeHtml(v.raw)}" ${isSelected ? 'selected' : ''}>${escapeHtml(v.title)} (${escapeHtml(v.gender)} • ${escapeHtml(v.tag)})</option>`;
+    });
+
+    const isDeleteDisabled = characterEntries.length <= 2;
+
+    html += `
+      <div class="p-3.5 rounded-2xl bg-[#0a071d]/90 border border-purple-500/30 space-y-2.5 shadow-md">
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2 flex-1 min-w-0">
+            <span class="w-6 h-6 rounded-lg bg-gradient-to-tr from-purple-600/40 to-cyan-500/40 border border-cyan-500/40 flex items-center justify-center text-xs font-bold text-cyan-300 shrink-0">
+              #${idx + 1}
+            </span>
+            <input 
+              type="text" 
+              value="${escapeHtml(char.name)}" 
+              placeholder="Character Name (default: Unknown)" 
+              oninput="onCharNameChange(${idx}, this.value)"
+              class="w-full bg-[#110d2c] border border-purple-500/30 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-100 font-mono focus:border-cyan-400 focus:outline-none placeholder-slate-500"
+            />
+          </div>
+          <button 
+            onclick="removeCharacter(${idx})" 
+            title="${isDeleteDisabled ? 'Minimum 2 characters required' : 'Remove Character'}"
+            class="p-1 text-xs rounded transition ${isDeleteDisabled ? 'opacity-20 cursor-not-allowed text-slate-500' : 'text-pink-400 hover:text-pink-300 hover:bg-pink-500/10'}"
+            ${isDeleteDisabled ? 'disabled' : ''}
+          >
+            🗑️
+          </button>
+        </div>
+
+        <div class="space-y-1">
+          <label class="text-[10px] font-mono text-purple-300/80">ASSIGNED AI VOICE:</label>
+          <select onchange="onCharVoiceChange(${idx}, this.value)" class="cyber-select w-full text-xs p-2">
+            ${optionsHtml}
+          </select>
+        </div>
+      </div>
+    `;
+  });
+
+  grid.innerHTML = html;
+}
+
+function addNewCharacter() {
+  if (characterEntries.length >= 5) {
+    showToast("Maximum 5 characters allowed in Multi-Voice mode! ⚠️", "warning");
+    return;
+  }
+  const nextVoice = DEFAULT_VOICE_POOL[characterEntries.length % DEFAULT_VOICE_POOL.length];
+  characterEntries.push({
+    id: 'c_' + Date.now(),
+    name: "Unknown",
+    voice: nextVoice
+  });
+  renderCharacterGrid();
+  showToast(`Character #${characterEntries.length} added! Default name: Unknown ➕`, "info");
+}
+
+function removeCharacter(idx) {
+  if (characterEntries.length <= 2) {
+    showToast("Minimum 2 characters required for Multi-Voice! ⚠️", "warning");
+    return;
+  }
+  const removed = characterEntries.splice(idx, 1);
+  renderCharacterGrid();
+  showToast(`Removed character: ${removed[0].name} 🗑️`, "info");
+}
+
+function onCharNameChange(idx, val) {
+  const clean = val.trim() || 'Unknown';
+  characterEntries[idx].name = clean;
+}
+
+function onCharVoiceChange(idx, val) {
+  characterEntries[idx].voice = val;
+  showToast(`Voice updated for ${characterEntries[idx].name} 🎙️`, "info");
+}
+
+async function syncCharactersFromScript() {
+  const text = document.getElementById('script-input').value.trim();
+  if (!text) {
+    renderCharacterGrid();
+    return;
+  }
 
   try {
     const res = await fetch('/api/dialogue/detect', {
@@ -192,67 +310,91 @@ async function refreshDetectedCharacters() {
       body: JSON.stringify({ script: text })
     });
     const data = await res.json();
-    detectedCharacters = data.characters || [];
+    const detected = data.characters || [];
 
-    if (detectedCharacters.length === 0) {
-      grid.innerHTML = `
-        <div class="col-span-full p-4 rounded-xl bg-[#070512]/60 border border-purple-500/20 text-center text-xs text-slate-400 font-mono">
-          No character tags found. Use format: <span class="text-cyan-300 font-bold">[Character Name]: Dialogue line</span>
-        </div>
-      `;
-      return;
-    }
-
-    // Default voice pool for smart assignment
-    const defaultVoicePool = [
-      "🌌 Enceladus (Deep, Epic & Cinematic - Male)",
-      "🌸 Kore (Calm, Soft & Soothing - Female)",
-      "🔥 Puck (High-Energy, Viral Reels & Hook - Male)",
-      "🎵 Aoede (Warm, Melodious & Expressive - Female)",
-      "⚡ Fenrir (Bold, Authoritative & Dramatic - Male)",
-      "💼 Leda (Professional News Anchor - Female)"
-    ];
-
-    let html = '';
-    detectedCharacters.forEach((charName, idx) => {
-      const assignedVoice = characterVoiceMap[charName] || defaultVoicePool[idx % defaultVoicePool.length];
-      characterVoiceMap[charName] = assignedVoice;
-
-      let optionsHtml = '';
-      allVoicesList.forEach(v => {
-        const isSelected = v.raw === assignedVoice;
-        optionsHtml += `<option value="${escapeHtml(v.raw)}" ${isSelected ? 'selected' : ''}>${escapeHtml(v.title)} (${escapeHtml(v.gender)} • ${escapeHtml(v.tag)})</option>`;
+    if (detected.length > 0) {
+      const topNames = detected.slice(0, 5);
+      characterEntries = topNames.map((name, i) => {
+        const existing = characterEntries.find(c => c.name.toLowerCase() === name.toLowerCase());
+        return {
+          id: 'c_' + i,
+          name: name,
+          voice: existing ? existing.voice : DEFAULT_VOICE_POOL[i % DEFAULT_VOICE_POOL.length]
+        };
       });
 
-      html += `
-        <div class="p-3 rounded-xl bg-[#070512]/80 border border-purple-500/25 space-y-2">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-purple-600/40 to-cyan-500/40 border border-cyan-500/40 flex items-center justify-center text-xs font-bold text-cyan-300">
-                ${idx + 1}
-              </div>
-              <span class="text-xs font-bold text-slate-100 font-mono">${escapeHtml(charName)}</span>
-            </div>
-            <span class="text-[10px] font-mono text-purple-300/80">Voice Assigned</span>
-          </div>
-
-          <select onchange="updateCharacterVoice('${escapeHtml(charName)}', this.value)" class="cyber-select w-full text-xs p-2">
-            ${optionsHtml}
-          </select>
-        </div>
-      `;
-    });
-
-    grid.innerHTML = html;
-
+      if (characterEntries.length < 2) {
+        characterEntries.push({
+          id: 'c_2',
+          name: "Unknown",
+          voice: DEFAULT_VOICE_POOL[1]
+        });
+      }
+      renderCharacterGrid();
+      showToast(`Synced ${characterEntries.length} characters from script! 🎭`, "success");
+    } else {
+      renderCharacterGrid();
+    }
   } catch (err) {
-    console.error("Detect characters error:", err);
+    renderCharacterGrid();
   }
 }
 
-function updateCharacterVoice(charName, voiceName) {
-  characterVoiceMap[charName] = voiceName;
-  showToast(`Voice updated for ${charName} 🎙️`, "info");
+async function convertStoryToScript() {
+  const rawStory = document.getElementById('script-input').value.trim();
+  if (!rawStory) {
+    showToast("Please paste your story text in the box first! 📄", "error");
+    return;
+  }
+
+  const btn = document.getElementById('btn-convert-story');
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.classList.add('opacity-75', 'cursor-wait');
+  btn.innerHTML = `<span>⏳</span> AI Converting...`;
+  showToast("AI is converting your raw story into a 5-character audio drama script... 🪄", "info");
+
+  try {
+    const res = await fetch('/api/dialogue/convert-story', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ story_text: rawStory })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Conversion failed");
+
+    document.getElementById('script-input').value = data.converted_script;
+    updateScriptStats();
+
+    // Map characters into characterEntries (up to 5)
+    if (data.characters && data.characters.length > 0) {
+      const topChars = data.characters.slice(0, 5);
+      characterEntries = topChars.map((name, i) => ({
+        id: 'c_' + i,
+        name: name,
+        voice: DEFAULT_VOICE_POOL[i % DEFAULT_VOICE_POOL.length]
+      }));
+
+      if (characterEntries.length < 2) {
+        characterEntries.push({
+          id: 'c_2',
+          name: "Unknown",
+          voice: DEFAULT_VOICE_POOL[1]
+        });
+      }
+      renderCharacterGrid();
+    }
+
+    showToast(`Story successfully converted into ${characterEntries.length}-character Audio Drama! 🎭✨`, "success");
+
+  } catch (err) {
+    showToast(`Error: ${err.message}`, "error");
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('opacity-75', 'cursor-wait');
+    btn.innerHTML = originalHtml;
+  }
 }
 
 function loadDialogueSample() {
@@ -262,7 +404,14 @@ function loadDialogueSample() {
 [Narrator]: Tabhi darwaza zoor se khula aur ek ajeeb sa saya samne aa gaya.`;
   document.getElementById('script-input').value = sample;
   updateScriptStats();
-  refreshDetectedCharacters();
+  characterEntries = [
+    { id: 'c1', name: "Narrator", voice: DEFAULT_VOICE_POOL[0] },
+    { id: 'c2', name: "Rahul", voice: DEFAULT_VOICE_POOL[2] },
+    { id: 'c3', name: "Priya", voice: DEFAULT_VOICE_POOL[1] }
+  ];
+  renderCharacterGrid();
+  showToast("Multi-Voice Drama script loaded! 🎭", "success");
+}
   showToast("Multi-Voice Drama script loaded! 🎭", "success");
 }
 
@@ -334,7 +483,7 @@ function clearScript() {
   document.getElementById('script-input').value = '';
   updateScriptStats();
   if (currentStudioMode === 'dialogue') {
-    refreshDetectedCharacters();
+    syncCharactersFromScript();
   }
 }
 
@@ -346,7 +495,7 @@ function loadScriptFile(event) {
     document.getElementById('script-input').value = e.target.result;
     updateScriptStats();
     if (currentStudioMode === 'dialogue') {
-      refreshDetectedCharacters();
+      syncCharactersFromScript();
     }
     showToast(`Loaded ${file.name}`, "success");
   };
@@ -361,6 +510,7 @@ async function loadVoices() {
 
     allVoicesList = data.voices.map(parseVoiceMetadata);
     renderVoiceCards();
+    renderCharacterGrid();
 
     // Tones Dropdown
     const toneSelect = document.getElementById('select-tone');
@@ -512,12 +662,19 @@ async function generateAudio() {
   try {
     let res;
     if (isDialogue) {
+      const charVoiceMap = {};
+      characterEntries.forEach(c => {
+        if (c.name) {
+          charVoiceMap[c.name] = c.voice;
+        }
+      });
+
       res = await fetch('/api/dialogue/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           script: text,
-          character_voices: characterVoiceMap,
+          character_voices: charVoiceMap,
           tone: tone,
           language: language
         })

@@ -12,6 +12,8 @@ if sys.platform == "win32":
     except Exception:
         pass
 import re
+import urllib.request
+import urllib.error
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -103,6 +105,9 @@ class DialogueGenerateRequest(BaseModel):
     character_voices: dict[str, str] = {}
     tone: str = "🎭 Dramatic & Cinematic Storyteller"
     language: str = "Hindi (Natural Indian Accent)"
+
+class StoryConvertRequest(BaseModel):
+    story_text: str
 
 # ── API Routes ───────────────────────────────────────────────────────────────
 
@@ -231,6 +236,122 @@ def detect_dialogue_speakers(req: DialogueDetectRequest):
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+def local_extract_dialogue_fallback(story_text: str) -> tuple[str, list[str]]:
+    """Fast offline fallback converter that extracts dialogues and attribution tags."""
+    story_clean = story_text.replace("“", '"').replace("”", '"').replace("‘", "'").replace("’", "'")
+    paragraphs = [p.strip() for p in story_clean.split("\n") if p.strip()]
+
+    attribution_pattern = re.compile(
+        r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*(?:ne\b|kaha\b|boli\b|bola\b|cheekhi\b|chillaya\b|pucha\b|poocha\b|ishara\b)',
+        re.IGNORECASE
+    )
+
+    discovered = set()
+    for p in paragraphs:
+        for m in attribution_pattern.finditer(p):
+            n = m.group(1).strip()
+            if n.lower() not in ("yeh", "usne", "unhone", "dono", "sab", "hum", "main", "kisi", "subah", "raat", "subah ki", "har taraf"):
+                discovered.add(n)
+
+    if re.search(r'\b(muhafiz|robotic|robot)\b', story_clean, re.IGNORECASE):
+        discovered.add("Muhafiz")
+
+    lines = []
+    chars_set = set()
+
+    for p in paragraphs:
+        if '"' in p:
+            parts = re.split(r'("[^"]+")', p)
+            for part in parts:
+                part = part.strip()
+                if not part:
+                    continue
+                if part.startswith('"') and part.endswith('"'):
+                    quote = part[1:-1].strip()
+                    speaker = "Unknown"
+                    for d in discovered:
+                        if re.search(rf'\b{re.escape(d)}\b', p, re.IGNORECASE):
+                            speaker = d
+                            break
+                    chars_set.add(speaker)
+                    lines.append(f"[{speaker}]: {quote}")
+                else:
+                    lines.append(f"[Narrator]: {part}")
+                    chars_set.add("Narrator")
+        else:
+            lines.append(f"[Narrator]: {p}")
+            chars_set.add("Narrator")
+
+    chars_list = ["Narrator"] + [c for c in chars_set if c != "Narrator"]
+    return "\n\n".join(lines), chars_list[:5]
+
+@app.post("/api/dialogue/convert-story")
+def convert_raw_story_to_dialogue(req: StoryConvertRequest):
+    """
+    Intelligently converts any raw narrative story/novel into a multi-character
+    dialogue script tagged with [Character]: and [Narrator]: lines.
+    Limits to at most 5 distinct characters.
+    """
+    raw_story = req.story_text.strip()
+    if not raw_story:
+        raise HTTPException(status_code=400, detail="Story text cannot be empty")
+
+    prompt = f"""Convert the following story into an audio drama script with separate characters.
+STRICT RULES:
+1. Max 5 characters total (e.g. [Narrator], [Tara], [Professor Kabir], [Ayaan], [Muhafiz]).
+2. Format each line strictly as: [Character Name]: Dialogue text
+3. Remove speech tags like 'Tara cheekhi' or 'Ayaan ne kaha' from dialogue lines.
+4. All non-dialogue descriptions must be tagged as [Narrator]: ...
+5. Keep the exact original Urdu/Hindi Roman text without translating. No markdown backticks.
+
+STORY:
+{raw_story}"""
+
+    candidates = key_vault.get_candidate_keys_for_generation()
+    converted_script = ""
+
+    if candidates:
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        candidate_models = ["gemini-3-flash-preview", "gemma-4-26b-a4b-it"]
+
+        for profile in candidates:
+            p_key = profile["key"].strip().strip('"\'')
+            for model in candidate_models:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={p_key}"
+                try:
+                    r = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"})
+                    with urllib.request.urlopen(r, timeout=30) as resp:
+                        data = json.loads(resp.read().decode("utf-8"))
+                        parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                        if parts and "text" in parts[0]:
+                            converted_script = parts[0]["text"].strip()
+                            break
+                except Exception:
+                    continue
+            if converted_script:
+                break
+
+    # Fallback to local heuristic parser if AI request times out or is offline
+    if not converted_script:
+        converted_script, chars = local_extract_dialogue_fallback(raw_story)
+    else:
+        # Strip any markdown fences if present
+        if converted_script.startswith("```"):
+            lines = converted_script.split("\n")
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            converted_script = "\n".join(lines).strip()
+        chars = detect_characters_in_script(converted_script)
+
+    characters = chars[:5]
+    return {
+        "success": True,
+        "converted_script": converted_script,
+        "characters": characters
+    }
 
 @app.post("/api/dialogue/generate")
 def generate_dialogue_audio(req: DialogueGenerateRequest):
